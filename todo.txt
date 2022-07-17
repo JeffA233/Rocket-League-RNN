@@ -1,2 +1,7 @@
 create dataset to train on
+-numpy files?
+-how to save and load most optimally
+-Omus?
+
 create model to train dataset on
+-seems easy and straightforward
