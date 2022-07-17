@@ -1,1 +1,2 @@
-
+create dataset to train on
+create model to train dataset on
