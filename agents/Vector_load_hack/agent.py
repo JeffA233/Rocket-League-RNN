@@ -24,7 +24,7 @@ class Agent:
         self.parser = DiscreteAction()
 
     def act(self, obs):
-        action = self.actor.predict(obs, deterministic=True)
+        action = self.actor.predict(obs, deterministic=True)[0]
         # x = []
         # act = action[0]
         # for i in act:
