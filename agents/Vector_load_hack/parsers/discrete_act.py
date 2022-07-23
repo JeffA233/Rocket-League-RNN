@@ -22,16 +22,15 @@ class DiscreteAction:
         return gym.spaces.MultiDiscrete([self._n_bins] * 5 + [2] * 3)
 
     def parse_actions(self, actions: np.ndarray, state: GameState) -> np.ndarray:
-        act = actions[0]
-        for i in act:
+        for i in actions:
             # x.append(self.parser.parse_actions(i, state))
             i = i.reshape((-1, 8))
             # map all ternary actions from {0, 1, 2} to {-1, 0, 1}.
             i[..., :5] = i[..., :5] / (self._n_bins // 2) - 1
 
-        self._simple_obs_action_store = np.c_[self._simple_obs_action_store, self.get_obs(state, act)]
+        self._simple_obs_action_store = np.c_[self._simple_obs_action_store, self.get_obs(state, actions)]
 
-        return act
+        return actions
 
     def save_arr(self, file_name):
         np.save(file_name, self._simple_obs_action_store)
