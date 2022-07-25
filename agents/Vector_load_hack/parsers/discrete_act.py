@@ -16,7 +16,7 @@ class DiscreteAction:
         assert n_bins % 2 == 1, "n_bins must be an odd number"
         self._n_bins = n_bins
         # 43 matches the size of index 0
-        self._simple_obs_action_store = np.empty((43, 0))
+        self._simple_obs_action_store = None
 
     def get_action_space(self) -> gym.spaces.Space:
         return gym.spaces.MultiDiscrete([self._n_bins] * 5 + [2] * 3)
@@ -28,13 +28,17 @@ class DiscreteAction:
             # map all ternary actions from {0, 1, 2} to {-1, 0, 1}.
             i[..., :5] = i[..., :5] / (self._n_bins // 2) - 1
 
-        self._simple_obs_action_store = np.c_[self._simple_obs_action_store, self.get_obs(state, actions)]
+        # self._simple_obs_action_store = np.c_[self._simple_obs_action_store, self.get_obs(state, actions)]
+        if self._simple_obs_action_store is None:
+            self._simple_obs_action_store = self.get_obs(state, actions)
+        else:
+            self._simple_obs_action_store = np.vstack((self._simple_obs_action_store, self.get_obs(state, actions)))
 
         return actions
 
     def save_arr(self, file_name):
         np.save(file_name, self._simple_obs_action_store)
-        self._simple_obs_action_store = np.empty((43, 0))
+        self._simple_obs_action_store = None
 
     def get_obs(self, state: GameState, actions: np.ndarray):
         ball = state.ball

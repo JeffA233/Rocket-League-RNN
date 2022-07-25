@@ -4,6 +4,7 @@ from agents.Vector_load_hack.parsers.discrete_act import DiscreteAction
 from terminal_conditions.custom_timeouts import KickoffTimeoutCondition
 from rlgym.utils.terminal_conditions.common_conditions import TimeoutCondition
 from agents.Vector_load_hack.agent import Agent
+import tqdm
 
 
 env = rlgym.make(tick_skip=1, use_injector=True, action_parser=DiscreteAction(), obs_builder=AdvancedObs(),
@@ -12,13 +13,15 @@ env = rlgym.make(tick_skip=1, use_injector=True, action_parser=DiscreteAction(),
 actor = Agent()
 
 # amount of ticks to collect
-ep_len = 120*8000
+ep_len = 120*1000
 # the amount of steps taken in order to check for a chance to save
 save_every = 2000
 # directory to store data
 directory = "data_collection"
 # name of data
 data_name = "arr_test"
+
+prog_bar = tqdm.tqdm(desc=f"Collecting arrays", total=ep_len, leave=True, smoothing=0.01)
 
 while True:
     obs = env.reset()
@@ -31,6 +34,7 @@ while True:
     x = 0
     while not ep_len_exceeded:
         x += 1
+        prog_bar.update(1)
         obs, reward, done, gameinfo = env.step(actions)
 
         # check if we need to save
