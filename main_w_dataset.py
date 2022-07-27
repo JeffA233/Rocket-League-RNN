@@ -3,85 +3,25 @@ from keras.layers import Dense, LSTM
 from keras.optimizers import Adam
 import numpy as np
 import tensorflow as tf
-# import rlgym
-import gzip
+# import gzip
+import rlgym.make
+from rlgym.utils.obs_builders.advanced_obs import AdvancedObs
+from agents.Vector_load_hack.parsers.discrete_act import DiscreteAction
+from terminal_conditions.custom_timeouts import KickoffTimeoutCondition
+from rlgym.utils.terminal_conditions.common_conditions import TimeoutCondition
+from agents.Vector_load_hack.agent import Agent
+import tqdm
+import tkinter
+from tkinter import messagebox
+import os
 
-# initialize 1d array
-arr = np.empty(0)
 
-# change this to use a new numpy array instead of the stored one
-use_stored = True
-# use_stored = False
+# initialize 1d array for later use
+arr = None
 
-# try to load stored numpy array to not have to start Rocket League for testing
-f = None
-if use_stored:
-    try:
-        f_comp = gzip.GzipFile(f"Vector_data_full_arr_compressed", "r")
-        if f_comp is None:
-            exit(1)
-        f = np.load(f_comp)
-        f_comp.close()
+env = rlgym.make(tick_skip=1, use_injector=True, action_parser=DiscreteAction(), obs_builder=AdvancedObs(),
+                 terminal_conditions=[TimeoutCondition(60*30), KickoffTimeoutCondition(60*5)], self_play=True)
 
-        arr = f.astype('float32')
-    except OSError as e:
-        print(e)
-        exit(1)
-
-# this is the data input arr
-arr_input = arr[:-1]
-# this is the target input arr
-arr_targ = arr[1:]
-
-dataset = tf.keras.utils.timeseries_dataset_from_array(arr_input, arr_targ, sequence_length=1, batch_size=10_000)
-# for batch in dataset:
-#     print(batch)
-#     input_data, targets = batch
-
-# if f was not loaded, create a numpy array from RLGym
-# if f is None:
-#     env = rlgym.make(use_injector=True)
-#     while True:
-#         x = 0
-#         obs = env.reset()
-#         x_arr = np.append(x_arr, obs, axis=0)
-#         done = False
-#         while not done:
-#             x = x + 1
-#             action = env.action_space.sample()
-#             next_obs, reward, done, gameinfo = env.step(action)
-#             obs = next_obs
-#
-#             x_arr = np.append(x_arr, obs, axis=0)
-#             if x == 10000:
-#                 break
-#         break
-#     np.save("arr_test", x_arr)
-#     env.close()
-
-# print loaded or generated array
-# print(x_arr)
-# expand dims to get to 3D instead of just 1D
-# x_arr = np.expand_dims(x_arr, axis=1)
-# x_arr = np.expand_dims(x_arr, axis=2)
-
-print(len(arr))
-print(arr.shape)
-
-# necessary cast to f32 because otherwise tf throws an error?
-# data_input = arr.astype('float32')
-
-# y_train = x_train for now?
-# y_train = x_train.copy()
-
-# if x_train.shape != y_train.shape:
-#     print(f"shape mis match {x_train.shape} {y_train.shape}")
-#     exit(0)
-#
-# print(x_train.shape)
-# print(y_train.shape)
-
-# one layer for now because Sequential with more than one LSTM layer throws dimensional errors it seems
 model = Sequential()
 model.add(LSTM(500, activation="relu", return_sequences=True))
 model.add(LSTM(200, activation="relu", return_sequences=True))
@@ -97,20 +37,132 @@ model.add(Dense(500, activation='tanh'))
 
 opt = Adam(learning_rate=1e-3, decay=1e-4)
 
-# loss function appears to not like -1, not sure if that is an output from the model error or if that is some other
-# error? can we use another loss function?
 model.compile(loss='mean_squared_error', optimizer=opt,
               metrics=['mean_squared_error', 'accuracy'])
 
+# UI stop training stuff
+keep_training = True
+top = tkinter.Tk()
+top.geometry('150x100')
 
-for batch in dataset:
-    input_data, target = batch
-    model.fit(
-        input_data,
-        target,
-        verbose=1,
-        epochs=3,
-        validation_data=(input_data, target),
-        workers=4,
-        validation_split=0.2,
-        use_multiprocessing=True)
+
+def stop_program():
+    if messagebox.askyesno("Confirm", "Confirm Stop?"):
+        T.delete("1.0", "end")
+        T.insert("1.0", "Stopping...")
+        global keep_training
+        keep_training = False
+
+
+B = tkinter.Button(top, text="Stop Training", command=stop_program)
+
+T = tkinter.Text(top, padx=10, pady=10)
+T.insert("1.0", "Training...")
+
+B.pack(pady=10, padx=10)
+T.pack()
+# end of UI stuff
+
+# amount of ticks to collect for the dataset
+ep_len = 100_000
+# initialize Vector agent
+actor = Agent()
+# the amount of steps taken in order to check for a chance to save an array
+save_every = 2000
+# batch size for learner
+batch_size = 10_000
+# directory to store data
+directory = "data_collection"
+# name of data
+data_name = "arr_test"
+# name of compiled final array
+final_file = "Vector_data_full_arr"
+
+while keep_training:
+    # console progress bar
+    prog_bar = tqdm.tqdm(desc="Collecting steps", total=ep_len, leave=True, smoothing=0.01, colour='green')
+
+    # delete all files in data directory and reset
+    for f_str in os.listdir(directory):
+        os.remove(f_str)
+    arr = None
+
+    # #################################################################### #
+    # start of data collection loop
+
+    while True:
+        obs = env.reset()
+        actions = actor.act(obs)
+
+        done = False
+        ep_len_exceeded = False
+        time_to_save = False
+
+        x = 0
+        while not ep_len_exceeded:
+            x += 1
+            prog_bar.update(1)
+            top.update()
+            obs, reward, done, gameinfo = env.step(actions)
+
+            # check if we need to save
+            if x % save_every == 0:
+                time_to_save = True
+
+            if done:
+                obs = env.reset()
+                # check when done if we need to save
+                if time_to_save:
+                    env._match._action_parser.save_arr(f"{directory}/{data_name}{x}")
+                    time_to_save = False
+
+            actions = actor.act(obs)
+
+            if x == ep_len:
+                ep_len_exceeded = True
+        break
+
+    # see DiscreteAction.save_arr for understanding purposes, specialty function for data collection
+    env._match._action_parser.save_arr(f"{directory}/{data_name}_final")
+
+    # end of data gathering
+    # #################################################################### #
+    # start of array packing
+
+    for f_str in os.listdir(directory):
+        if f_str is f"{directory}/{final_file}_compressed":
+            continue
+            # maybe not necessary check to skip
+        file_str = f"{directory}/{f_str}"
+        f = np.load(file_str)
+        if arr is None:
+            arr = f
+        else:
+            arr = np.vstack((arr, f))
+
+    # this is the data input arr
+    arr_input = arr[:-1]
+    # this is the target input arr
+    arr_targ = arr[1:]
+
+    dataset = tf.keras.utils.timeseries_dataset_from_array(arr_input, arr_targ, sequence_length=1,
+                                                           batch_size=batch_size)
+
+    # end of packing arrays into arr
+    # #################################################################### #
+    # start learning
+
+    for batch in dataset:
+        input_data, target = batch
+        model.fit(
+            input_data,
+            target,
+            verbose=1,
+            epochs=3,
+            validation_data=(input_data, target),
+            workers=4,
+            validation_split=0.2,
+            use_multiprocessing=True)
+
+# we're done, close it up
+env.close()
