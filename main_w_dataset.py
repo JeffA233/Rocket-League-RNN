@@ -1,6 +1,7 @@
 from keras.models import Sequential
 from keras.layers import Dense, LSTM
 from keras.optimizers import Adam
+from keras.models import load_model
 import numpy as np
 import tensorflow as tf
 # import gzip
@@ -16,31 +17,10 @@ from tkinter import messagebox
 import os
 
 
-# initialize 1d array for later use
-arr = None
-
 env = rlgym.make(tick_skip=1, use_injector=True, action_parser=DiscreteAction(), obs_builder=AdvancedObs(),
                  terminal_conditions=[TimeoutCondition(60*30), KickoffTimeoutCondition(60*5)], self_play=True)
 
-model = Sequential()
-model.add(LSTM(500, activation="relu", return_sequences=True))
-model.add(LSTM(200, activation="relu", return_sequences=True))
-model.add(LSTM(200, activation="relu", return_sequences=True))
-model.add(LSTM(200, activation="relu", return_sequences=True))
-model.add(LSTM(200, activation="relu", return_sequences=True))
-model.add(LSTM(200, activation="relu", return_sequences=True))
-model.add(LSTM(200, activation="relu", return_sequences=True))
-model.add(LSTM(200, activation="relu", return_sequences=True))
-model.add(Dense(500, activation='relu'))
-model.add(Dense(500, activation='relu'))
-model.add(Dense(500, activation='tanh'))
-
-opt = Adam(learning_rate=1e-3, decay=1e-4)
-
-model.compile(loss='mean_squared_error', optimizer=opt,
-              metrics=['mean_squared_error', 'accuracy'])
-
-# UI stop training stuff
+# UI "stop training" window stuff
 keep_training = True
 top = tkinter.Tk()
 top.geometry('150x100')
@@ -61,22 +41,56 @@ T.insert("1.0", "Training...")
 
 B.pack(pady=10, padx=10)
 T.pack()
-# end of UI stuff
 
-# amount of ticks to collect for the dataset
-ep_len = 100_000
 # initialize Vector agent
 actor = Agent()
+
+# amount of steps to collect for the dataset
+ep_len = 100_000
 # the amount of steps taken in order to check for a chance to save an array
 save_every = 2000
 # batch size for learner
 batch_size = 10_000
+
 # directory to store data
 directory = "data_collection"
 # name of data
 data_name = "arr_test"
 # name of compiled final array
 final_file = "Vector_data_full_arr"
+
+# whether to load a model or not
+load_model_file = True
+# NOTE: loading uses the same variables as saving
+# model save directory
+save_directory = "model"
+# model save name
+model_name = "model_1"
+# save optimizer option
+save_optimizer = True
+
+
+if not load_model_file:
+    model = Sequential()
+    model.add(LSTM(500, activation="relu", return_sequences=True))
+    model.add(LSTM(200, activation="relu", return_sequences=True))
+    model.add(LSTM(200, activation="relu", return_sequences=True))
+    model.add(LSTM(200, activation="relu", return_sequences=True))
+    model.add(LSTM(200, activation="relu", return_sequences=True))
+    model.add(LSTM(200, activation="relu", return_sequences=True))
+    model.add(LSTM(200, activation="relu", return_sequences=True))
+    model.add(LSTM(200, activation="relu", return_sequences=True))
+    model.add(Dense(500, activation='relu'))
+    model.add(Dense(500, activation='relu'))
+    model.add(Dense(500, activation='tanh'))
+
+    opt = Adam(learning_rate=1e-3, decay=1e-4)
+
+    model.compile(loss='mean_squared_error', optimizer=opt,
+                  metrics=['mean_squared_error', 'accuracy'])
+else:
+    model = load_model(f"{save_directory}/{model_name}.tf")  # compiles by default
+
 
 while keep_training:
     # console progress bar
@@ -113,6 +127,7 @@ while keep_training:
                 obs = env.reset()
                 # check when done if we need to save
                 if time_to_save:
+                    # see DiscreteAction.save_arr for understanding purposes, specialty function for data collection
                     env._match._action_parser.save_arr(f"{directory}/{data_name}{x}")
                     time_to_save = False
 
@@ -122,7 +137,6 @@ while keep_training:
                 ep_len_exceeded = True
         break
 
-    # see DiscreteAction.save_arr for understanding purposes, specialty function for data collection
     env._match._action_parser.save_arr(f"{directory}/{data_name}_final")
 
     # end of data gathering
@@ -132,7 +146,7 @@ while keep_training:
     for f_str in os.listdir(directory):
         if f_str is f"{directory}/{final_file}_compressed":
             continue
-            # maybe not necessary check to skip
+            # maybe not necessary to check to skip (was for previous functionality)
         file_str = f"{directory}/{f_str}"
         f = np.load(file_str)
         if arr is None:
@@ -163,6 +177,8 @@ while keep_training:
             workers=4,
             validation_split=0.2,
             use_multiprocessing=True)
+
+    model.save(f"{save_directory}/{model_name}.tf", include_optimizer=save_optimizer)
 
 # we're done, close it up
 env.close()
