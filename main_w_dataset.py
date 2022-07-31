@@ -18,7 +18,7 @@ from tkinter import messagebox
 import os
 from extra_functions import *
 
-run_rocket_league_instance = False
+run_rocket_league_instance = True
 
 if run_rocket_league_instance == True:
     env = rlgym.make(tick_skip=1, use_injector=True, action_parser=DiscreteAction(), obs_builder=AdvancedObs(),
