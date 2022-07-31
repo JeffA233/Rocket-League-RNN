@@ -20,9 +20,10 @@ from extra_functions import *
 
 run_rocket_league_instance = True
 
-if run_rocket_league_instance == True:
+
+if run_rocket_league_instance:
     env = rlgym.make(tick_skip=1, use_injector=True, action_parser=DiscreteAction(), obs_builder=AdvancedObs(),
-                    terminal_conditions=[TimeoutCondition(60*30), KickoffTimeoutCondition(60*5)], self_play=True)
+                     terminal_conditions=[TimeoutCondition(60*30), KickoffTimeoutCondition(60*5)], self_play=True)
 
 # UI "stop training" window stuff
 keep_training = True
@@ -63,6 +64,7 @@ data_name = "arr_test"
 # name of compiled final array
 final_file = "Vector_data_full_arr"
 
+# NOTE: when running the first time you will have to set this to False
 # whether to load a model or not
 load_model_file = False
 # NOTE: loading uses the same variables as saving
@@ -73,13 +75,13 @@ model_name = "model_1"
 # save optimizer option
 save_optimizer = True
 
-if os.path.isdir(directory) == False:
+if not os.path.isdir(directory):
     create_directory(directory)
 else:
     print(" ")
     print("Data directory found")
 
-if os.path.isdir(save_directory) == False:
+if not os.path.isdir(save_directory):
     create_directory(save_directory)
 else:
     print(" ")
@@ -98,7 +100,8 @@ if not load_model_file:
     model.add(LSTM(200, activation="relu", return_sequences=True))
     model.add(Dense(500, activation='relu'))
     model.add(Dense(500, activation='relu'))
-    model.add(Dense(500, activation='tanh'))
+    # need 43 to match output shape of (current) obs which has a shape of 43
+    model.add(Dense(43, activation='tanh'))
 
     opt = adam_v2.Adam(learning_rate=1e-3, decay=1e-4)
 
@@ -110,7 +113,7 @@ else:
 
 while keep_training:
     # console progress bar
-    prog_bar = tqdm.tqdm(desc="Collecting steps", total=ep_len, leave=True, smoothing=0.01, colour='green')
+    prog_bar = tqdm.tqdm(desc="Collecting steps", total=ep_len, leave=False, smoothing=0.01, colour='green')
 
     # delete all files in data directory and reset
     # for f_str in os.listdir(directory):
@@ -119,12 +122,21 @@ while keep_training:
     # #################################################################### #
     # start of data collection loop
 
-    if run_rocket_league_instance == False:
+    if not run_rocket_league_instance:
         print(" ")
         print("Skiping data gather")
         prog_bar.update(100)
+    else:
+        # delete all files in data directory and reset
+        for f_str in os.listdir(directory):
+            try:
+                path = os.path.join(directory, f_str)
+                # path = os.path.abspath(path)
+                os.remove(path)
+            except FileNotFoundError as e:
+                print(e)
 
-    while run_rocket_league_instance == True:
+    while run_rocket_league_instance:
         obs = env.reset()
         actions = actor.act(obs)
 
@@ -156,8 +168,9 @@ while keep_training:
             if x == ep_len:
                 ep_len_exceeded = True
         break
-
-    env._match._action_parser.save_arr(f"{directory}/{data_name}_final")
+    if run_rocket_league_instance:
+        env._match._action_parser.save_arr(f"{directory}/{data_name}_final")
+        prog_bar.close()
 
     # end of data gathering
     # #################################################################### #
@@ -166,9 +179,11 @@ while keep_training:
     arr = load_directory_info(directory, final_file)
 
     # this is the data input arr
-    arr_input = arr[:-1]
+    arr_input: np.ndarray = arr[:-1]
+    # print(arr_input.shape)
     # this is the target input arr
-    arr_targ = arr[1:]
+    arr_targ: np.ndarray = arr[1:]
+    # print(arr_targ.shape)
 
     dataset = tf.keras.utils.timeseries_dataset_from_array(arr_input, arr_targ, sequence_length=1,
                                                            batch_size=batch_size)
@@ -178,13 +193,16 @@ while keep_training:
     # start learning
 
     for batch in dataset:
+        input_data: tf.Tensor
+        target: tf.Tensor
         input_data, target = batch
+        target = tf.expand_dims(target, axis=1)
         model.fit(
             input_data,
             target,
             verbose=1,
             epochs=3,
-            validation_data=batch,
+            # validation_data=batch,
             workers=4,
             validation_split=0.2,
             use_multiprocessing=True)
@@ -192,5 +210,5 @@ while keep_training:
     model.save(f"{save_directory}/{model_name}.tf", include_optimizer=save_optimizer)
 
 # we're done, close it up
-if run_rocket_league_instance == True:
+if run_rocket_league_instance:
     env.close()
