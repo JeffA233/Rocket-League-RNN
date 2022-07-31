@@ -1,6 +1,7 @@
+from genericpath import isdir
 from keras.models import Sequential
 from keras.layers import Dense, LSTM
-from keras.optimizers import Adam
+from keras.optimizers import adam_v2
 from keras.models import load_model
 import numpy as np
 import tensorflow as tf
@@ -15,10 +16,13 @@ import tqdm
 import tkinter
 from tkinter import messagebox
 import os
+from extra_functions import *
 
+run_rocket_league_instance = False
 
-env = rlgym.make(tick_skip=1, use_injector=True, action_parser=DiscreteAction(), obs_builder=AdvancedObs(),
-                 terminal_conditions=[TimeoutCondition(60*30), KickoffTimeoutCondition(60*5)], self_play=True)
+if run_rocket_league_instance == True:
+    env = rlgym.make(tick_skip=1, use_injector=True, action_parser=DiscreteAction(), obs_builder=AdvancedObs(),
+                    terminal_conditions=[TimeoutCondition(60*30), KickoffTimeoutCondition(60*5)], self_play=True)
 
 # UI "stop training" window stuff
 keep_training = True
@@ -60,7 +64,7 @@ data_name = "arr_test"
 final_file = "Vector_data_full_arr"
 
 # whether to load a model or not
-load_model_file = True
+load_model_file = False
 # NOTE: loading uses the same variables as saving
 # model save directory
 save_directory = "model"
@@ -68,6 +72,18 @@ save_directory = "model"
 model_name = "model_1"
 # save optimizer option
 save_optimizer = True
+
+if os.path.isdir(directory) == False:
+    create_directory(directory)
+else:
+    print(" ")
+    print("Data directory found")
+
+if os.path.isdir(save_directory) == False:
+    create_directory(save_directory)
+else:
+    print(" ")
+    print("Save directory found")
 
 
 if not load_model_file:
@@ -84,7 +100,7 @@ if not load_model_file:
     model.add(Dense(500, activation='relu'))
     model.add(Dense(500, activation='tanh'))
 
-    opt = Adam(learning_rate=1e-3, decay=1e-4)
+    opt = adam_v2.Adam(learning_rate=1e-3, decay=1e-4)
 
     model.compile(loss='mean_squared_error', optimizer=opt,
                   metrics=['mean_squared_error', 'accuracy'])
@@ -97,14 +113,18 @@ while keep_training:
     prog_bar = tqdm.tqdm(desc="Collecting steps", total=ep_len, leave=True, smoothing=0.01, colour='green')
 
     # delete all files in data directory and reset
-    for f_str in os.listdir(directory):
-        os.remove(f_str)
-    arr = None
+    # for f_str in os.listdir(directory):
+    #     os.remove(f_str)
 
     # #################################################################### #
     # start of data collection loop
 
-    while True:
+    if run_rocket_league_instance == False:
+        print(" ")
+        print("Skiping data gather")
+        prog_bar.update(100)
+
+    while run_rocket_league_instance == True:
         obs = env.reset()
         actions = actor.act(obs)
 
@@ -137,22 +157,13 @@ while keep_training:
                 ep_len_exceeded = True
         break
 
-    env._match._action_parser.save_arr(f"{directory}/{data_name}_final")
+    #env._match._action_parser.save_arr(f"{directory}/{data_name}_final")
 
     # end of data gathering
     # #################################################################### #
     # start of array packing
 
-    for f_str in os.listdir(directory):
-        if f_str is f"{directory}/{final_file}_compressed":
-            continue
-            # maybe not necessary to check to skip (was for previous functionality)
-        file_str = f"{directory}/{f_str}"
-        f = np.load(file_str)
-        if arr is None:
-            arr = f
-        else:
-            arr = np.vstack((arr, f))
+    arr = load_directory_info(directory, final_file)
 
     # this is the data input arr
     arr_input = arr[:-1]
@@ -173,7 +184,7 @@ while keep_training:
             target,
             verbose=1,
             epochs=3,
-            validation_data=(input_data, target),
+            validation_data=dataset,
             workers=4,
             validation_split=0.2,
             use_multiprocessing=True)
@@ -181,4 +192,5 @@ while keep_training:
     model.save(f"{save_directory}/{model_name}.tf", include_optimizer=save_optimizer)
 
 # we're done, close it up
-env.close()
+if run_rocket_league_instance == True:
+    env.close()
