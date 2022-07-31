@@ -157,7 +157,7 @@ while keep_training:
                 ep_len_exceeded = True
         break
 
-    #env._match._action_parser.save_arr(f"{directory}/{data_name}_final")
+    env._match._action_parser.save_arr(f"{directory}/{data_name}_final")
 
     # end of data gathering
     # #################################################################### #
@@ -184,7 +184,7 @@ while keep_training:
             target,
             verbose=1,
             epochs=3,
-            validation_data=dataset,
+            validation_data=batch,
             workers=4,
             validation_split=0.2,
             use_multiprocessing=True)
