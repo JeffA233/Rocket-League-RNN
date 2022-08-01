@@ -64,9 +64,16 @@ data_name = "arr_test"
 # name of compiled final array
 final_file = "Vector_data_full_arr"
 
+# start of actions slice in obs
+start_act = 9
+# end of actions slice in obs (start_act + (num_agents * 8))
+end_act = 25
+# out shape that is shaped the same as the target obs
+out_shape = 27
+
 # NOTE: when running the first time you will have to set this to False
 # whether to load a model or not
-load_model_file = False
+load_model_file = True
 # NOTE: loading uses the same variables as saving
 # model save directory
 save_directory = "model"
@@ -100,8 +107,8 @@ if not load_model_file:
     model.add(LSTM(200, activation="relu", return_sequences=True))
     model.add(Dense(500, activation='relu'))
     model.add(Dense(500, activation='relu'))
-    # need 43 to match output shape of (current) obs which has a shape of 43
-    model.add(Dense(43, activation='tanh'))
+    # need 27 to match output shape of (current) target which has a shape of 27
+    model.add(Dense(out_shape, activation='tanh'))
 
     opt = adam_v2.Adam(learning_rate=1e-3, decay=1e-4)
 
@@ -183,6 +190,11 @@ while keep_training:
     # print(arr_input.shape)
     # this is the target input arr
     arr_targ: np.ndarray = arr[1:]
+    # we need to delete actions from the target array since we don't want the NN to predict them
+    arr_mask = np.zeros_like(arr_targ, dtype=np.bool)
+    arr_mask = arr_mask[0, :]
+    arr_mask[start_act:end_act] = True
+    arr_targ = np.delete(arr_targ, arr_mask, axis=1)
     # print(arr_targ.shape)
 
     dataset = tf.keras.utils.timeseries_dataset_from_array(arr_input, arr_targ, sequence_length=1,
